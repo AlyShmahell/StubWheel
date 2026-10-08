@@ -1,20 +1,13 @@
 #!/usr/bin/env python3
 import os
-import re
 import sys
-import shutil
-import argparse
-
-def progstring(x):
-    edge = len(x) - len(x.lstrip())
-    x = x.split("\n")
-    for idx, _ in enumerate(x):
-        x[idx] = x[idx][edge-1:]
-    return "\n".join(x)
+import tempfile
+import questionary
+from textwrap import dedent
+from types import SimpleNamespace
 
 def stubwheel(args):
-    os.makedirs('temp', exist_ok=True)
-    stub = \
+    stub = dedent(
         f"""
         from setuptools import setup, find_packages
         setup(
@@ -28,21 +21,30 @@ def stubwheel(args):
             long_description_content_type='text/markdown'
         )
         """
-    stub = progstring(stub)
-    with open(f"temp/setup.py", 'w') as f:
-        f.write(stub)
-    os.system("cd temp && python setup.py sdist bdist_wheel && twine check dist/* && twine upload dist/*")
-    shutil.rmtree('temp')
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "setup.py"), 'w') as f:
+            f.write(stub)
+        os.system(f'cd "{tmp}" && python setup.py sdist bdist_wheel && twine check dist/* && twine upload dist/*')
+
+def ask_text(message, default="", validate=None):
+    answer = questionary.text(message, default=default, validate=validate).ask()
+    if answer is None:
+        raise SystemExit(1)
+    return answer
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--name',    type=str, required=True,   help='package name (required)')
-    parser.add_argument('--version', type=str, default='0.0.0', help='package version (optional)')
-    parser.add_argument('--url',     type=str, default='',      help='package url (optional)')
-    parser.add_argument('--author',  type=str, default='',      help='author name (optional)')
-    parser.add_argument('--email',   type=str, default='',      help='author email (optional)')
-    parser.add_argument('--desc',    type=str, default='',      help='package description (optional)')
-    args = parser.parse_args()
+    args = SimpleNamespace(
+        name=ask_text(
+            "Package name:",
+            validate=lambda text: True if text.strip() else "package name is required",
+        ).strip(),
+        version=ask_text("Package version:", default="0.0.0"),
+        url=ask_text("Package URL:"),
+        author=ask_text("Author name:"),
+        email=ask_text("Author email:"),
+        desc=ask_text("Package description:"),
+    )
     stubwheel(args)
 
 if __name__ == "__main__":
